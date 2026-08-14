@@ -1,0 +1,141 @@
+# KnowHack — Render Blueprint
+#
+# One repo, three dynamic Web Services (one per Root Directory). No static
+# services: the frontend does SSR (Nitro node-server), the backend and AI
+# service are long-lived Node/Python servers.
+#
+# Fill the SYNC_WITH / fromServer / secretFile lines and secrets (or set them
+# in the dashboard) before deploying. `autoDeploy: true` deploys on every push.
+
+services:
+  # ---- Frontend (TanStack Start SSR, Nitro node-server) ----
+  - type: web
+    name: knowhack-frontend
+    runtime: node
+    rootDir: frontend
+    repo: https://github.com/YOUR_ORG/knowhack   # TODO: your repo URL
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /
+    buildCommand: npm ci && npm run build
+    startCommand: node .output/server/index.mjs
+    envVars:
+      - key: NODE_VERSION
+        value: 22.x
+      # Backend public URL. Must match (backend) CLIENT_ORIGIN / AI service ALLOWED_ORIGINS wiring.
+      - key: VITE_API_URL
+        sync: false   # e.g. https://knowhack-backend.onrender.com/api/v1
+      # AI-service public URL. Used ONLY for the lightweight wake-up on page load
+      # (GET /health). Its data endpoints stay protected behind the backend proxy.
+      - key: VITE_AI_SERVICE_URL
+        sync: false   # e.g. https://knowhack-ai.onrender.com
+
+  # ---- Backend (Node.js + Express + MongoDB) ----
+  - type: web
+    name: knowhack-backend
+    runtime: node
+    rootDir: backend
+    repo: https://github.com/YOUR_ORG/knowhack   # TODO: your repo URL
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /health
+    buildCommand: npm ci
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CLIENT_ORIGIN
+        sync: false   # e.g. https://knowhack-frontend.onrender.com
+      - key: MONGODB_URI
+        sync: false   # MongoDB Atlas or Render Managed MongoDB connection string
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRES
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES
+        value: 30d
+      - key: COOKIE_DOMAIN
+        value: ""
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CLOUDINARY_FOLDER
+        value: knowhack
+      - key: MAX_FILE_SIZE_MB
+        value: "25"
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: RATE_LIMIT_MAX
+        value: "300"
+      - key: AUTH_RATE_LIMIT_MAX
+        value: "20"
+      - key: AI_SERVICE_URL
+        sync: false   # e.g. https://knowhack-ai.onrender.com
+      - key: AI_API_KEY
+        sync: false   # MUST be identical to ai-server AI_API_KEY
+      - key: AI_TIMEOUT_MS
+        value: "120000"
+      - key: AI_MAX_RETRIES
+        value: "2"
+      - key: AI_RETRY_DELAY_MS
+        value: "1500"
+      # Bounded probe used by /api/v1/health for the AI check.
+      - key: AI_HEALTH_TIMEOUT_MS
+        value: "8000"
+
+  # ---- AI service (FastAPI / Uvicorn) ----
+  - type: web
+    name: knowhack-ai
+    runtime: python
+    rootDir: ai-server
+    repo: https://github.com/YOUR_ORG/knowhack   # TODO: your repo URL
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /health
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: ENVIRONMENT
+        value: production
+      # Backend calls every endpoint (x-api-key). The browser is only allowed to
+      # call GET /health (liveness wake-up, no data, no key) — so include the
+      # FRONTEND public URL here as well as the backend's.
+      - key: ALLOWED_ORIGINS
+        sync: false   # e.g. https://knowhack-backend.onrender.com,https://knowhack-frontend.onrender.com
+      - key: AI_API_KEY
+        sync: false   # MUST be identical to backend AI_API_KEY
+      - key: LLM_PROVIDER
+        value: huggingface
+      - key: LLM_BASE_URL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: meta-llama/Llama-3.1-8B-Instruct
+      - key: LLM_TIMEOUT_SECONDS
+        value: "60"
+      - key: LLM_JSON_MODE
+        value: auto
+      - key: EMBEDDING_PROVIDER
+        value: hash
+      - key: EMBEDDING_MODEL
+        value: sentence-transformers/all-MiniLM-L6-v2
+      - key: EMBEDDING_API_KEY
+        sync: false
+      - key: EMBEDDING_DIM
+        value: "384"
+      - key: RAG_TOP_K
+        value: "6"
+      - key: MAX_CONTEXT_CHARS
+        value: "12000"
+      - key: MAX_DOWNLOAD_MB
+        value: "25"

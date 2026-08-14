@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 318 316" role="img" aria-label="KnowHack logo mark">
+  <defs><linearGradient id="purpleGradient" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0%" stop-color="#9A4DFF"/>
+  <stop offset="48%" stop-color="#8430F8"/>
+  <stop offset="100%" stop-color="#6819EF"/>
+</linearGradient></defs>
+  <path d="M 123 212 L 123 219 L 191 287 L 199 294 L 205 297 L 217 300 L 243 300 L 244 301 L 255 301 L 256 300 L 259 301 L 271 301 L 272 300 L 275 301 L 277 300 L 280 301 L 316 301 L 288 271 L 272 256 L 184 165 L 176 159 Z M 295 3 L 294 2 L 203 3 L 189 8 L 147 46 L 143 51 L 48 142 L 47 146 L 48 147 L 48 152 L 94 197 L 100 201 L 108 200 L 125 181 L 211 93 Z M 57 1 L 42 5 L 22 18 L 7 34 L 1 49 L 1 256 L 108 314 L 109 313 L 109 225 L 106 219 L 42 156 L 39 149 L 41 139 L 49 130 L 106 76 L 104 2 L 102 1 Z" fill="url(#purpleGradient)" fill-rule="evenodd"/>
+</svg>
