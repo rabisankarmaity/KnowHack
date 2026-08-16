@@ -22,16 +22,23 @@ const PING_TIMEOUT_MS = 8_000;
 function ping(url: string, label: string): void {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
-  fetch(url, { method: "GET", mode: "cors", credentials: "omit", signal: controller.signal })
-    .then((res) => {
-      if (res.ok) console.debug(`[STARTUP] ${label} health check ok (${url})`);
-      else console.debug(`[STARTUP] ${label} health check responded ${res.status}`);
-    })
-    .catch((err: unknown) => {
-      // Cold starts abort with a network/CORS error — that's expected and fine.
-      console.debug(`[STARTUP] ${label} warm-up request failed silently`, err);
-    })
-    .finally(() => clearTimeout(timer));
+  try {
+    fetch(url, { method: "GET", mode: "cors", credentials: "omit", signal: controller.signal })
+      .then((res) => {
+        if (res.ok) console.debug(`[STARTUP] ${label} health check ok (${url})`);
+        else console.debug(`[STARTUP] ${label} health check responded ${res.status}`);
+      })
+      .catch((err: unknown) => {
+        // Cold starts abort with a network/CORS error — that's expected and fine.
+        console.debug(`[STARTUP] ${label} warm-up request failed silently`, err);
+      })
+      .finally(() => clearTimeout(timer));
+  } catch (err) {
+    // Some extensions/ad-blockers wrap window.fetch and throw synchronously for
+    // blocked hosts. Never let a warm-up ping surface an unhandled error.
+    clearTimeout(timer);
+    console.debug(`[STARTUP] ${label} warm-up request blocked`, err);
+  }
 }
 
 export function warmUpServers(): void {

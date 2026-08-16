@@ -15,7 +15,7 @@ type Theme = "light" | "dark" | "system";
 
 export function SettingsPage() {
   const { user, refresh } = useAuth();
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] = useState<Theme>("system");
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [college, setCollege] = useState("");

@@ -21,13 +21,21 @@ function parseCookieDomain(rawDomain) {
   }
 }
 
-const cookieOptions = (maxAgeMs) => ({
-  httpOnly: true,
-  secure: process.env.COOKIE_SECURE === 'true',
-  sameSite: process.env.COOKIE_SECURE === 'true' ? 'none' : 'lax',
-  domain: parseCookieDomain(process.env.COOKIE_DOMAIN),
-  path: '/',
-  maxAge: maxAgeMs,
-});
+const cookieOptions = (maxAgeMs) => {
+  // Render services under *.onrender.com are separate SITES (onrender.com is a
+  // public suffix), so the hosted frontend → backend calls are cross-site and
+  // REQUIRE SameSite=None + Secure. Force that for every non-development env so
+  // a stray COOKIE_SECURE=false from a copied dev .env can't silently break
+  // auth on the hosted app. Local dev stays SameSite=Lax + plain HTTP.
+  const secureCookies = process.env.COOKIE_SECURE === 'true' || process.env.NODE_ENV !== 'development';
+  return {
+    httpOnly: true,
+    secure: secureCookies,
+    sameSite: secureCookies ? 'none' : 'lax',
+    domain: parseCookieDomain(process.env.COOKIE_DOMAIN),
+    path: '/',
+    maxAge: maxAgeMs,
+  };
+};
 
 module.exports = { signAccessToken, signRefreshToken, verifyAccessToken, verifyRefreshToken, cookieOptions };

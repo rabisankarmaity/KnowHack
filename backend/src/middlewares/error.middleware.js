@@ -25,13 +25,30 @@ function notFoundHandler(req, _res, next) {
   next(new ApiError(404, `Route ${req.method} ${req.originalUrl} not found`));
 }
 
+/** Normalize Mongoose ValidationError / CastError into the shared `{field, message}` array shape. */
+function mongooseErrorDetails(err) {
+  if (err.name === 'ValidationError' && err.errors && typeof err.errors === 'object') {
+    return Object.entries(err.errors).map(([path, e]) => {
+      if (e && e.name === 'CastError') {
+        return { field: path, message: `Invalid value for "${path}"` };
+      }
+      const raw = e?.message || e?.reason?.message || 'Invalid value';
+      return { field: path, message: raw.replace(/^Path /, '').replace(/\.$/, '') };
+    });
+  }
+  if (err.name === 'CastError' && err.path) {
+    return [{ field: err.path, message: `Invalid value for "${err.path}"` }];
+  }
+  return undefined;
+}
+
 function errorHandler(err, _req, res, _next) {
   let status = err.statusCode || 500;
   let message = err.message || 'Internal server error';
   let details = err.details;
 
-  if (err.name === 'ValidationError') { status = 400; message = 'Validation failed'; details = err.errors; }
-  if (err.name === 'CastError') { status = 400; message = `Invalid ${err.path}`; }
+  if (err.name === 'ValidationError') { status = 400; message = 'Validation failed'; details = details || mongooseErrorDetails(err); }
+  if (err.name === 'CastError') { status = 400; message = `Invalid ${err.path}`; details = details || mongooseErrorDetails(err); }
   if (err.code === 11000) { status = 409; message = 'Duplicate value'; details = err.keyValue; }
   if (err.name === 'JsonWebTokenError') { status = 401; message = 'Invalid token'; }
   if (err.name === 'TokenExpiredError') { status = 401; message = 'Token expired'; }

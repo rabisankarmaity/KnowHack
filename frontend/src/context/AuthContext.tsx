@@ -4,12 +4,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { AxiosRequestConfig } from "axios";
 import { authApi, type LoginPayload, type RegisterPayload } from "@/lib/api/auth";
-import { describeRequestError, setSessionExpiredHandler } from "@/lib/api/client";
+import { describeRequestError, isNetworkError, setSessionExpiredHandler } from "@/lib/api/client";
 import type { UserDTO } from "@/lib/api/types";
 
 // Hydration must survive a backend cold start: keep probing for a bounded
@@ -47,13 +48,33 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserDTO | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Set once a session is established by an explicit login/register. Guards the
+  // mount-time hydration against clearing a user who just signed in while the
+  // backend was still waking up (a stale 401 must never undo a fresh login).
+  const manuallyAuthedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
       const res = await authApi.me();
       setUser(res.data.user);
-    } catch {
-      setUser(null);
+    } catch (err) {
+      // Only a definitive failure (dead session) clears the user; a cold-start
+      // network error must never log the user out.
+      if (!isNetworkError(err)) setUser(null);
+    }
+  }, []);
+
+  // True iff an authenticated call proves the httpOnly session cookies are
+  // being accepted and sent back. Network errors (backend still waking) are
+  // treated as "not provable yet" rather than a hard failure.
+  const verifyCookieSession = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await authApi.me({ timeout: 6000 });
+      setUser(res.data.user);
+      return true;
+    } catch (err) {
+      if (isNetworkError(err)) return true; // transient — don't block a good login
+      return false;
     }
   }, []);
 
@@ -71,7 +92,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         try {
           const res = await authApi.me({ timeout: HYDRATION_TIMEOUT_MS });
-          if (!cancelled) setUser(res.data.user);
+          if (!cancelled) {
+            manuallyAuthedRef.current = true;
+            setUser(res.data.user);
+          }
           break;
         } catch (err) {
           if (cancelled) return;
@@ -80,7 +104,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const lastAttempt = attempt === HYDRATION_ATTEMPTS - 1;
           if (!network || lastAttempt || elapsedOut) {
             // Definitive 401 (session really dead) or retry budget exhausted.
-            if (!cancelled) setUser(null);
+            // A user who signed in mid-hydration must NOT be cleared by a stale
+            // 401 from a request that was sent before their login succeeded.
+            if (!cancelled && !manuallyAuthedRef.current) setUser(null);
             break;
           }
           await sleep(HYDRATION_DELAY_MS(attempt));
@@ -97,15 +123,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (payload: LoginPayload, config?: AxiosRequestConfig) => {
     const res = await authApi.login(payload, config);
+    manuallyAuthedRef.current = true;
     setUser(res.data.user);
+    // The login may have returned the user in its body even when the browser
+    // rejected the session cookies (privacy extension / cross-site cookie
+    // misconfiguration). Verify the cookie session actually persists; otherwise
+    // the very next request would log the user out again — tell them why.
+    const ok = await verifyCookieSession();
+    if (!ok) {
+      manuallyAuthedRef.current = false;
+      setUser(null);
+      throw new Error(
+        "Signed in, but your session couldn't be saved — cookies for this site appear to be blocked. Enable cookies (including third-party cookies) and try again.",
+      );
+    }
     return res.data.user;
-  }, []);
+  }, [verifyCookieSession]);
 
   const register = useCallback(async (payload: RegisterPayload, config?: AxiosRequestConfig) => {
     const res = await authApi.register(payload, config);
+    manuallyAuthedRef.current = true;
     setUser(res.data.user);
+    const ok = await verifyCookieSession();
+    if (!ok) {
+      manuallyAuthedRef.current = false;
+      setUser(null);
+      throw new Error(
+        "Account created, but your session couldn't be saved — cookies for this site appear to be blocked. Enable cookies (including third-party cookies) and try again.",
+      );
+    }
     return res.data.user;
-  }, []);
+  }, [verifyCookieSession]);
 
   const logout = useCallback(async () => {
     try {
@@ -114,6 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // swallow - we'll clear locally anyway
       console.warn("logout failed:", describeRequestError(err));
     }
+    manuallyAuthedRef.current = false;
     setUser(null);
   }, []);
 

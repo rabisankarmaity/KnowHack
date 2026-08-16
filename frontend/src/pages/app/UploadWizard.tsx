@@ -47,6 +47,7 @@ import {
   fmtBytes,
   lineHelpers,
   csvHelpers,
+  stepForField,
 } from "@/pages/app/upload-model";
 
 const ALLOWED_MIME = new Set([
@@ -130,7 +131,8 @@ export function UploadWizard() {
       .getBySlug(search.edit)
       .then((res) => {
         if (cancelled) return;
-        if (String((res.data.project.owner as ProjectDTO["owner"])?._id || "").length === 0) return;
+        const owner = res.data.project.owner;
+        if (typeof owner !== "object" || owner === null || !owner._id) return;
         const p = res.data.project;
         setForm(fromProject(p));
         setProjectId(p._id);
@@ -185,6 +187,7 @@ export function UploadWizard() {
     }
     const res = await projectsApi.create({ ...payload, status: "draft" as const });
     setProjectId(res.data.project._id);
+    projectIdRef.current = res.data.project._id;
     setSlug(res.data.project.slug);
     return res.data.project;
   };
@@ -257,7 +260,17 @@ export function UploadWizard() {
           setDirty(false);
           setStep(Math.min(steps.length - 1, step + 1));
         })
-        .catch((err) => toast.error(apiErrorMessage(err, "Could not create draft")))
+        .catch((err) => {
+          const fieldErrors = apiFieldErrors(err);
+          if (fieldErrors.length) {
+            const errs: FieldHints = {};
+            for (const fe of fieldErrors) errs[fe.field] = fe.message;
+            showHints(errs);
+            setStep(stepForField(fieldErrors[0].field));
+          } else {
+            toast.error(apiErrorMessage(err, "Could not create draft"));
+          }
+        })
         .finally(() => setSubmitting(false));
       return;
     }
@@ -294,21 +307,32 @@ export function UploadWizard() {
   };
 
   const runAiReview = async () => {
-    if (!projectIdRef.current) {
+    let id = projectIdRef.current;
+    if (!id) {
       // Ensure a project exists first.
       if (!formRef.current.title.trim()) {
         toast.error("Add a project name first");
         setStep(0);
         return;
       }
-      await createOrUpdate(toPayload(formRef.current));
-      dirtyRef.current = false;
+      try {
+        const created = await createOrUpdate(toPayload(formRef.current));
+        id = created._id;
+        dirtyRef.current = false;
+      } catch (err) {
+        toast.error(apiErrorMessage(err, "Could not save project for review"));
+        return;
+      }
     } else {
-      await saveDraftNow(true);
+      try {
+        await saveDraftNow(true);
+      } catch {
+        return;
+      }
     }
     setReviewLoading(true);
     try {
-      const res = await projectsApi.aiReview(projectIdRef.current!);
+      const res = await projectsApi.aiReview(id!);
       setReview(res.data.review);
       toast.success(`Case File ${res.data.review.completeness}% complete`);
     } catch (err) {
@@ -344,7 +368,7 @@ export function UploadWizard() {
         const errs: FieldHints = {};
         for (const fe of fieldErrors) errs[fe.field] = fe.message;
         showHints(errs);
-        setStep(0);
+        setStep(stepForField(fieldErrors[0].field));
         return;
       }
       toast.error(apiErrorMessage(err, "Failed to publish"));
@@ -447,12 +471,12 @@ export function UploadWizard() {
                 {step === 0 && (
                   <StepBasics form={form} onChange={patch} clearHint={clearHint} hints={hints} teamTotal={teamTotal} hasTeam={hasTeam} />
                 )}
-                {step === 1 && <StepProblem form={form} onChange={patch} />}
+                {step === 1 && <StepProblem form={form} onChange={patch} clearHint={clearHint} hints={hints} />}
                 {step === 2 && <StepResearch form={form} onChange={patch} pickFile={pickFile} />}
-                {step === 3 && <StepExisting form={form} onChange={patch} set={set} />}
-                {step === 4 && <StepSolution form={form} onChange={patch} set={set} />}
-                {step === 5 && <StepArchitecture form={form} onChange={patch} set={set} pickFile={pickFile} />}
-                {step === 6 && <StepFiles form={form} onChange={patch} set={set} pickFile={pickFile} />}
+                {step === 3 && <StepExisting form={form} onChange={patch} set={set} clearHint={clearHint} hints={hints} />}
+                {step === 4 && <StepSolution form={form} onChange={patch} set={set} clearHint={clearHint} hints={hints} />}
+                {step === 5 && <StepArchitecture form={form} onChange={patch} set={set} pickFile={pickFile} clearHint={clearHint} hints={hints} />}
+                {step === 6 && <StepFiles form={form} onChange={patch} set={set} pickFile={pickFile} clearHint={clearHint} hints={hints} />}
                 {step === 7 && <StepJourney form={form} onChange={patch} set={set} />}
                 {step === 8 && (
                   <StepAiReview
@@ -1039,13 +1063,31 @@ function StepBasics({
 
 // ---- Step 2: Problem statement -------------------------------------------
 
-function StepProblem({ form, onChange }: { form: FormState; onChange: (fn: (p: FormState) => FormState) => void }) {
+function StepProblem({
+  form,
+  onChange,
+  clearHint,
+  hints,
+}: {
+  form: FormState;
+  onChange: (fn: (p: FormState) => FormState) => void;
+  clearHint: (f: string) => void;
+  hints: FieldHints;
+}) {
   const p = form.problem;
   const setP = (patch: Partial<FormState["problem"]>) => onChange((s) => ({ ...s, problem: { ...s.problem, ...patch } }));
   return (
     <>
-      <Field label="Describe the problem">
-        <TextAreaField value={p.overview} onChange={(v) => setP({ overview: v })} rows={6} placeholder="What problem does this project solve?" />
+      <Field label="Describe the problem" required hint={hints["problem.overview"]}>
+        <TextAreaField
+          value={p.overview}
+          onChange={(v) => {
+            setP({ overview: v });
+            clearHint("problem.overview");
+          }}
+          rows={6}
+          placeholder="What problem does this project solve?"
+        />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Why does this problem matter?">
@@ -1164,10 +1206,14 @@ function StepExisting({
   form,
   onChange,
   set,
+  clearHint,
+  hints,
 }: {
   form: FormState;
   onChange: (fn: (p: FormState) => FormState) => void;
   set: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
+  clearHint: (f: string) => void;
+  hints: FieldHints;
 }) {
   const setOne = (i: number, patch: Partial<FormState["existingSolutions"][number]>) =>
     onChange((p) => ({ ...p, existingSolutions: p.existingSolutions.map((e, idx) => (idx === i ? { ...e, ...patch } : e)) }));
@@ -1203,8 +1249,16 @@ function StepExisting({
               <Field label="Name">
                 <TextField value={e.name} onChange={(v) => setOne(i, { name: v })} placeholder="GitHub" max={200} />
               </Field>
-              <Field label="Website">
-                <TextField value={e.website || ""} onChange={(v) => setOne(i, { website: v })} placeholder="https://github.com/" max={300} />
+              <Field label="Website" hint={hints[`existingSolutions.${i}.website`]}>
+                <TextField
+                  value={e.website || ""}
+                  onChange={(v) => {
+                    setOne(i, { website: v });
+                    clearHint(`existingSolutions.${i}.website`);
+                  }}
+                  placeholder="https://github.com/"
+                  max={300}
+                />
               </Field>
             </div>
             <div className="mt-3">
@@ -1241,10 +1295,14 @@ function StepSolution({
   form,
   onChange,
   set,
+  clearHint,
+  hints,
 }: {
   form: FormState;
   onChange: (fn: (p: FormState) => FormState) => void;
   set: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
+  clearHint: (f: string) => void;
+  hints: FieldHints;
 }) {
   const s = form.solution;
   const setS = (patch: Partial<FormState["solution"]>) => onChange((x) => ({ ...x, solution: { ...x.solution, ...patch } }));
@@ -1254,8 +1312,15 @@ function StepSolution({
 
   return (
     <>
-      <Field label="Solution overview">
-        <TextAreaField value={s.overview} onChange={(v) => setS({ overview: v })} rows={4} />
+      <Field label="Solution overview" required hint={hints["solution.overview"]}>
+        <TextAreaField
+          value={s.overview}
+          onChange={(v) => {
+            setS({ overview: v });
+            clearHint("solution.overview");
+          }}
+          rows={4}
+        />
       </Field>
       <Field label="Complete solution description">
         <TextAreaField value={s.description} onChange={(v) => setS({ description: v })} rows={6} />
@@ -1364,11 +1429,15 @@ function StepArchitecture({
   onChange,
   set,
   pickFile,
+  clearHint,
+  hints,
 }: {
   form: FormState;
   onChange: (fn: (p: FormState) => FormState) => void;
   set: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
   pickFile: (e: ChangeEvent<HTMLInputElement>, onRefs: (refs: FileRef[]) => void) => void;
+  clearHint: (f: string) => void;
+  hints: FieldHints;
 }) {
   const a = form.architecture;
   const setA = (patch: Partial<FormState["architecture"]>) => onChange((s) => ({ ...s, architecture: { ...s.architecture, ...patch } }));
@@ -1383,8 +1452,15 @@ function StepArchitecture({
 
   return (
     <>
-      <Field label="System architecture description">
-        <TextAreaField value={a.description} onChange={(v) => setA({ description: v })} rows={5} />
+      <Field label="System architecture description" required hint={hints["architecture.description"]}>
+        <TextAreaField
+          value={a.description}
+          onChange={(v) => {
+            setA({ description: v });
+            clearHint("architecture.description");
+          }}
+          rows={5}
+        />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Architecture diagram">
@@ -1461,8 +1537,16 @@ function StepArchitecture({
           <Field label="Monitoring">
             <TextField value={t.infrastructureMonitoring} onChange={(v) => setT({ infrastructureMonitoring: v })} placeholder="Sentry, Grafana" />
           </Field>
-          <Field label="GitHub repository">
-            <TextField value={t.githubRepository} onChange={(v) => setT({ githubRepository: v })} placeholder="https://github.com/you/project" max={300} />
+          <Field label="GitHub repository" hint={hints["techStack.githubRepository"]}>
+            <TextField
+              value={t.githubRepository}
+              onChange={(v) => {
+                setT({ githubRepository: v });
+                clearHint("techStack.githubRepository");
+              }}
+              placeholder="https://github.com/you/project"
+              max={300}
+            />
           </Field>
         </div>
       </div>
@@ -1496,8 +1580,16 @@ function StepArchitecture({
                 <Field label="Provider">
                   <TextField value={api.provider || ""} onChange={(v) => setApi(i, { provider: v })} />
                 </Field>
-                <Field label="Documentation URL">
-                  <TextField value={api.documentationUrl || ""} onChange={(v) => setApi(i, { documentationUrl: v })} placeholder="https://…" max={300} />
+                <Field label="Documentation URL" hint={hints[`apiIntegrations.${i}.documentationUrl`]}>
+                  <TextField
+                    value={api.documentationUrl || ""}
+                    onChange={(v) => {
+                      setApi(i, { documentationUrl: v });
+                      clearHint(`apiIntegrations.${i}.documentationUrl`);
+                    }}
+                    placeholder="https://…"
+                    max={300}
+                  />
                 </Field>
                 <Field label="Authentication type">
                   <TextField value={api.authType || ""} onChange={(v) => setApi(i, { authType: v })} placeholder="API key, OAuth…" max={120} />
@@ -1511,8 +1603,16 @@ function StepArchitecture({
       <div className="rounded-xl border border-border/60 p-4">
         <div className="text-sm font-semibold">UI/UX design</div>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <Field label="Figma URL">
-            <TextField value={a.figmaUrl} onChange={(v) => setA({ figmaUrl: v })} placeholder="https://figma.com/file/…" max={300} />
+          <Field label="Figma URL" hint={hints["architecture.figmaUrl"]}>
+            <TextField
+              value={a.figmaUrl}
+              onChange={(v) => {
+                setA({ figmaUrl: v });
+                clearHint("architecture.figmaUrl");
+              }}
+              placeholder="https://figma.com/file/…"
+              max={300}
+            />
           </Field>
           <Field label="Design system">
             <TextField value={a.designSystem} onChange={(v) => setA({ designSystem: v })} placeholder="shadcn/ui, Material…" />
@@ -1541,11 +1641,15 @@ function StepFiles({
   onChange,
   set,
   pickFile,
+  clearHint,
+  hints,
 }: {
   form: FormState;
   onChange: (fn: (p: FormState) => FormState) => void;
   set: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
   pickFile: (e: ChangeEvent<HTMLInputElement>, onRefs: (refs: FileRef[]) => void) => void;
+  clearHint: (f: string) => void;
+  hints: FieldHints;
 }) {
   const pr = form.presentation;
   const setP = (patch: Partial<FormState["presentation"]>) => onChange((s) => ({ ...s, presentation: { ...s.presentation, ...patch } }));
@@ -1579,11 +1683,27 @@ function StepFiles({
       <div className="rounded-xl border border-border/60 p-4">
         <div className="text-sm font-semibold">Demo</div>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <Field label="Live demo URL">
-            <TextField value={pr.liveDemoUrl} onChange={(v) => setP({ liveDemoUrl: v })} placeholder="https://…" max={300} />
+          <Field label="Live demo URL" hint={hints["presentation.liveDemoUrl"]}>
+            <TextField
+              value={pr.liveDemoUrl}
+              onChange={(v) => {
+                setP({ liveDemoUrl: v });
+                clearHint("presentation.liveDemoUrl");
+              }}
+              placeholder="https://…"
+              max={300}
+            />
           </Field>
-          <Field label="Demo video URL">
-            <TextField value={pr.demoVideoUrl} onChange={(v) => setP({ demoVideoUrl: v })} placeholder="https://youtube.com/watch?v=…" max={300} />
+          <Field label="Demo video URL" hint={hints["presentation.demoVideoUrl"]}>
+            <TextField
+              value={pr.demoVideoUrl}
+              onChange={(v) => {
+                setP({ demoVideoUrl: v });
+                clearHint("presentation.demoVideoUrl");
+              }}
+              placeholder="https://youtube.com/watch?v=…"
+              max={300}
+            />
           </Field>
           <Field label="Demo credentials (private)">
             <TextField value={pr.demoCredentials} onChange={(v) => setP({ demoCredentials: v })} placeholder="Only visible to your team" max={200} />
@@ -2076,28 +2196,29 @@ function StepPublish({
   const warnings = review?.warnings ?? preview.warnings;
   const nav = useNavigate();
 
-  const sections: { label: string; ok: boolean }[] = [
-    { label: "Project overview", ok: form.title.trim().length > 0 },
-    { label: "Team details", ok: hasTeam },
-    { label: "Problem statement", ok: form.problem.overview.trim().length > 0 },
-    { label: "Research & validation", ok: Boolean(form.research.validation.trim() || form.research.summary.trim() || form.research.methods.length) },
-    { label: "Existing solutions", ok: form.existingSolutions.length > 0 },
-    { label: "Proposed solution", ok: Boolean(form.solution.overview.trim() || form.solution.description.trim()) },
-    { label: "Feature breakdown", ok: form.features.length > 0 },
-    { label: "System architecture", ok: Boolean(form.architecture.description.trim() || form.architecture.diagram) },
-    { label: "Database design", ok: Boolean(form.architecture.databaseType.trim() || form.architecture.databaseDescription.trim()) },
-    { label: "Technology stack", ok: form.techStack.categories.some((c) => c.value.trim()) },
-    { label: "API & integrations", ok: form.architecture.apiIntegrations.length > 0 },
-    { label: "UI/UX design", ok: Boolean(form.architecture.figmaUrl.trim() || form.architecture.designSystem.trim()) },
-    { label: "Development journey", ok: form.developmentJourney.length > 0 },
-    { label: "Presentation & demo", ok: Boolean(form.presentation.liveDemoUrl.trim() || form.presentation.demoVideoUrl.trim() || form.presentation.pitchDeck) },
-    { label: "Judge feedback", ok: form.judgeFeedback.length > 0 },
-    { label: "Lessons learned", ok: form.lessons.challenges.length > 0 || form.lessons.wentWell.length > 0 },
-    { label: "Future scope", ok: form.futureScope.length > 0 || form.lessons.futureImprovements.length > 0 },
-    { label: "AI generated metadata", ok: Boolean(review) },
+  const sections: { label: string; ok: boolean; required: boolean }[] = [
+    { label: "Project overview", ok: form.title.trim().length > 0, required: true },
+    { label: "Team details", ok: hasTeam, required: false },
+    { label: "Problem statement", ok: form.problem.overview.trim().length > 0, required: true },
+    { label: "Research & validation", ok: Boolean(form.research.validation.trim() || form.research.summary.trim() || form.research.methods.length), required: false },
+    { label: "Existing solutions", ok: form.existingSolutions.length > 0, required: false },
+    { label: "Proposed solution", ok: Boolean(form.solution.overview.trim() || form.solution.description.trim()), required: true },
+    { label: "Feature breakdown", ok: form.features.length > 0, required: true },
+    { label: "System architecture", ok: Boolean(form.architecture.description.trim() || form.architecture.diagram), required: true },
+    { label: "Database design", ok: Boolean(form.architecture.databaseType.trim() || form.architecture.databaseDescription.trim()), required: false },
+    { label: "Technology stack", ok: form.techStack.categories.some((c) => c.value.trim()), required: true },
+    { label: "API & integrations", ok: form.architecture.apiIntegrations.length > 0, required: false },
+    { label: "UI/UX design", ok: Boolean(form.architecture.figmaUrl.trim() || form.architecture.designSystem.trim()), required: false },
+    { label: "Development journey", ok: form.developmentJourney.length > 0, required: false },
+    { label: "Presentation & demo", ok: Boolean(form.presentation.liveDemoUrl.trim() || form.presentation.demoVideoUrl.trim() || form.presentation.pitchDeck), required: false },
+    { label: "Judge feedback", ok: form.judgeFeedback.length > 0, required: false },
+    { label: "Lessons learned", ok: form.lessons.challenges.length > 0 || form.lessons.wentWell.length > 0, required: false },
+    { label: "Future scope", ok: form.futureScope.length > 0 || form.lessons.futureImprovements.length > 0, required: false },
+    { label: "AI generated metadata", ok: Boolean(review), required: false },
   ];
   const completeSections = sections.filter((s) => s.ok).length;
   const shownComplete = Math.round((completeSections / sections.length) * 100);
+  const missingRequired = sections.filter((s) => s.required && !s.ok);
 
   if (publishedSlug) {
     return (
@@ -2155,10 +2276,34 @@ function StepPublish({
             <span className={cn("grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px]", s.ok ? "bg-emerald-500/15 text-emerald-600" : "bg-secondary text-muted-foreground")}>
               {s.ok ? <Check className="h-3 w-3" /> : "—"}
             </span>
-            <span className={cn(s.ok ? "" : "text-muted-foreground")}>{s.label}</span>
+            <span className={cn("min-w-0 flex-1 truncate", s.ok ? "" : "text-muted-foreground")}>{s.label}</span>
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                s.required ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground",
+              )}
+            >
+              {s.required ? FIELD.required : FIELD.optional}
+            </span>
           </div>
         ))}
       </div>
+
+      {missingRequired.length > 0 && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4">
+          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-red-600">
+            Missing required sections
+          </div>
+          <ul className="space-y-1 text-sm">
+            {missingRequired.map((s) => (
+              <li key={s.label} className="flex items-start gap-2">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" /> {s.label}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-red-600">You can still publish, but reviewers will see these gaps.</p>
+        </div>
+      )}
 
       {warnings.filter((w) => !/team contributions/i.test(w)).length > 0 && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">

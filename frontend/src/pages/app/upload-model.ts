@@ -34,6 +34,25 @@ export const FIELD = {
   optional: "Optional",
 } as const;
 
+/** Step that owns each top-level form field (used to jump to the right step when the backend flags a field). */
+const FIELD_STEPS: Record<string, number> = {
+  title: 0, shortDescription: 0, oneLineDescription: 0, hackathonName: 0, organizer: 0, year: 0,
+  category: 0, domain: 0, sdgAlignment: 0, difficulty: 0, teamName: 0, projectStatus: 0, team: 0,
+  problem: 1,
+  research: 2,
+  existingSolutions: 3,
+  solution: 4, features: 4,
+  architecture: 5, techStack: 5, implementation: 5,
+  presentation: 6, resources: 6, cover: 6, files: 6,
+  developmentJourney: 7, judgeFeedback: 7, lessonsLearned: 7, futureScope: 7,
+  visibility: 9, license: 9, ownershipConfirmed: 9, copyrightConfirmed: 9,
+  contributorAttribution: 9, scheduledReleaseDate: 9,
+};
+
+export function stepForField(field: string): number {
+  return FIELD_STEPS[field.split(".")[0]] ?? 0;
+}
+
 // ---------------------------------------------------------------------------
 // Form state.
 // ---------------------------------------------------------------------------
@@ -386,7 +405,7 @@ export const initialForm: FormState = {
 // ---------------------------------------------------------------------------
 export function toPayload(form: FormState): Partial<ProjectDTO> {
   const files: ProjectDTO["files"] = [];
-  const add = (category: ProjectDTO["files"][number]["category"], ref?: FileRef | null) => {
+  const add = (category: NonNullable<ProjectDTO["files"]>[number]["category"], ref?: FileRef | null) => {
     if (ref?.url) files.push({ file: ref, category: category || "other" });
   };
   add("cover", form.cover);
@@ -491,7 +510,7 @@ export function toPayload(form: FormState): Partial<ProjectDTO> {
     techStack: {
       languages: form.techStack.languages,
       frameworks: form.techStack.frameworks,
-      categories: categoryMap as ProjectDTO["techStack"]["categories"],
+      categories: categoryMap as NonNullable<ProjectDTO["techStack"]>["categories"],
       infrastructure: {
         hosting: form.techStack.infrastructureHosting.trim(),
         storage: form.techStack.infrastructureStorage.trim(),
@@ -516,8 +535,8 @@ export function toPayload(form: FormState): Partial<ProjectDTO> {
       demoNotes: form.presentation.demoNotes.trim(),
     },
 
-    developmentJourney: form.developmentJourney.filter((d) => d.phase.trim() || d.description.trim()),
-    judgeFeedback: form.judgeFeedback.filter((f) => f.question.trim() || f.comment.trim()),
+    developmentJourney: form.developmentJourney.filter((d) => (d.phase ?? "").trim() || (d.description ?? "").trim()),
+    judgeFeedback: form.judgeFeedback.filter((f) => (f.question ?? "").trim() || (f.comment ?? "").trim()),
 
     lessonsLearned: {
       challenges: form.lessons.challenges,
@@ -534,7 +553,7 @@ export function toPayload(form: FormState): Partial<ProjectDTO> {
       businessLessons: form.lessons.businessLessons,
     },
 
-    futureScope: form.futureScope.filter((f) => f.title.trim() || f.description.trim()),
+    futureScope: form.futureScope.filter((f) => (f.title ?? "").trim() || (f.description ?? "").trim()),
 
     visibility: form.visibility,
     license: form.license,
@@ -642,7 +661,7 @@ export function fromProject(p: ProjectDTO): FormState {
   };
 
   const tc = p.techStack || {};
-  const categories = tc.categories || {};
+  const categories = (tc.categories || {}) as Record<string, string[] | undefined>;
   const infra = tc.infrastructure || {};
   f.techStack = {
     languages: tc.languages || [],
@@ -650,7 +669,7 @@ export function fromProject(p: ProjectDTO): FormState {
     categories: TECH_CATEGORIES.map((c) => ({
       key: c.key,
       label: c.label,
-      value: (categories[c.key as keyof typeof categories] || []).join(", "),
+      value: (categories[c.key] || []).join(", "),
     })),
     infrastructureHosting: infra.hosting || "",
     infrastructureStorage: infra.storage || "",
@@ -716,7 +735,7 @@ export function validateStep(step: number, form: FormState): FieldHints {
     if (!errs[field]) errs[field] = msg;
   };
 
-  const isUrl = (v: string, field: string) => {
+  const isUrl = (v: string | undefined, field: string) => {
     if (v && !URL_RE.test(v)) push(field, "Enter a valid URL (e.g. https://github.com/you/repo)");
   };
 
@@ -736,11 +755,18 @@ export function validateStep(step: number, form: FormState): FieldHints {
       isUrl(m.linkedin, `team.${i}.linkedin`);
       isUrl(m.portfolio, `team.${i}.portfolio`);
     });
-    const total = form.team.reduce((sum, m) => sum + (Number(m.contribution) || 0), 0);
-    if (form.team.some((m) => m.name.trim()) && total !== 100) {
-      // Non-blocking hint surfaced on the publish/AI-review step, not an error here.
-      if (total > 0) push("teamContribution", `Contributions total ${total}% — aim for 100%`);
-    }
+  }
+
+  if (step === 1 && !form.problem.overview.trim()) {
+    errs["problem.overview"] = "Describe the problem — this is a required field";
+  }
+
+  if (step === 4 && !form.solution.overview.trim() && !form.solution.description.trim()) {
+    errs["solution.overview"] = "Add a solution overview or description — this is a required field";
+  }
+
+  if (step === 5 && !form.architecture.description.trim()) {
+    errs["architecture.description"] = "Add a system architecture description — this is a required field";
   }
 
   if (step === 3) {

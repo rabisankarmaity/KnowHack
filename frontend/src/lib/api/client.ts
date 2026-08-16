@@ -116,9 +116,19 @@ apiClient.interceptors.response.use(
         await performRefresh();
         console.debug("[AUTH] Access token refreshed");
         return apiClient(original);
-      } catch {
-        console.debug("[AUTH] Refresh failed — session expired");
-        onSessionExpired?.();
+      } catch (refreshErr) {
+        // Only a definitive rejection from the refresh endpoint itself
+        // (401/403) means the session is truly dead. A refresh that never
+        // reached the server (cold start / outage) is NOT — logging the user
+        // out for that is what bounces them back to /login right after a
+        // successful login on Render's sleeping instances.
+        const refreshStatus = axios.isAxiosError(refreshErr) ? refreshErr.response?.status : undefined;
+        if (refreshStatus === 401 || refreshStatus === 403) {
+          console.debug("[AUTH] Refresh rejected — session expired");
+          onSessionExpired?.();
+        } else {
+          console.debug("[AUTH] Refresh could not reach server — session kept", refreshErr);
+        }
         return Promise.reject(error);
       }
     }
@@ -165,6 +175,21 @@ export const FIELD_LABELS: Record<string, string> = {
   license: "License",
   year: "Year",
   "implementation.githubRepository": "GitHub repository link",
+  "techStack.githubRepository": "GitHub repository link",
+  "architecture.description": "Architecture description",
+  "architecture.diagram": "Architecture diagram",
+  "architecture.figmaUrl": "Figma URL",
+  "architecture.database": "Database design",
+  "architecture.database.type": "Database type",
+  "architecture.apiIntegrations": "API & integrations",
+  "problem.overview": "Problem statement",
+  "solution.overview": "Solution overview",
+  "presentation.liveDemoUrl": "Live demo URL",
+  "presentation.demoVideoUrl": "Demo video URL",
+  "existingSolutions": "Existing solutions",
+  "features": "Features",
+  "research": "Research & validation",
+  "team": "Team members",
   name: "Full name",
   username: "Username",
   email: "Email",
@@ -190,8 +215,18 @@ export const FIELD_MESSAGES: Record<string, string> = {
   shortDescription: "Must be at most 300 characters",
   oneLineDescription: "Must be at most 200 characters",
   "implementation.githubRepository": "Must be a valid URL (e.g. https://github.com/you/repo)",
+  "techStack.githubRepository": "Must be a valid URL (e.g. https://github.com/you/repo)",
+  "architecture.database": "Check the fields in your database design",
+  "architecture.database.type": "Select a valid database type",
+  "architecture.description": "Add a system architecture description",
+  "architecture.figmaUrl": "Must be a valid URL starting with http(s)://",
+  "problem.overview": "Describe the problem your project solves",
+  "solution.overview": "Add a solution overview or description",
   "presentation.liveDemoUrl": "Must be a valid URL starting with http(s)://",
   "presentation.demoVideoUrl": "Must be a valid URL starting with http(s)://",
+  "existingSolutions": "Each existing solution needs a name",
+  "features": "Each feature needs a name",
+  "team": "Each team member needs a name",
   "team.*.contribution": "Contribution must be a percentage between 0 and 100",
   "features.*.priority": "Priority must be must-have, should-have, could-have, or future",
   "features.*.status": "Status must be planned, in-development, completed, or future",

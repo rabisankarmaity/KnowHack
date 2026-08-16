@@ -186,7 +186,7 @@ const ProjectSchema = new mongoose.Schema({
       diagram: FileRef,
     },
     database: {
-      type: String,
+      type: { type: String },
       description: String,
       erDiagram: FileRef,
       collections: [String],

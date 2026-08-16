@@ -13,8 +13,106 @@ enriched by an AI service, and shared with fine-grained visibility.
 
 ---
 
+## 👥 Team & Project Information
+
+| | |
+| --- | --- |
+| **Team Name** | Fourpod |
+| **Project Name** | KnowHack |
+| **Track** | Open Innovation |
+
+> Build any innovative solution that solves a meaningful real-world problem, regardless of domain.
+
+**Example domains include:** EdTech, Consumer Applications, Developer Tools, Startup Products, and Cross-Domain Solutions.
+
+### Team Members & Roles
+
+| Role | Name | Responsibilities |
+| --- | --- | --- |
+| Team Lead | Aritra Mukherjee | Research, product strategy, project execution, team coordination, documentation, and overall solution development |
+| Team Member | Rabi Sankar Maity | UI/UX, presentation design, user experience roadmap, visual design, and product experience |
+| Team Member | Deb Sankar Das | Video production, security, trust layer, technical demonstrations, and security-focused implementation |
+| Team Member | Apurba Pramanik | AI workflow, AI integration, AI pipeline design, and technical documentation |
+
+#### Team Lead — Aritra Mukherjee
+
+**Email:** `aritramukherjee1509@gmail.com` · **Contact:** `6296072284`
+
+**Role:** Team Lead, Product Strategy, Research & Overall Solution Development
+
+**Responsibilities:**
+
+- Led the overall research and problem-solving process behind KnowHack.
+- Coordinated the team's technical and non-technical activities throughout the project.
+- Directed the overall product vision, feature planning, and solution strategy.
+- Coordinated project execution and ensured that different components worked together as one complete solution.
+- Contributed to research, ideation, system planning, and product development.
+- Oversaw project documentation and ensured that technical and presentation materials remained consistent.
+- Managed task distribution and coordination between team members.
+- Worked across different stages of development to resolve blockers and maintain project progress.
+- Helped connect the AI workflow, product experience, security/trust concepts, documentation, and presentation into a unified solution.
+- Took overall responsibility for the final solution, project execution, and hackathon deliverables.
+
+#### Team Member — Rabi Sankar Maity
+
+**Email:** `rabisankarmaityofficial@gmail.com` · **Contact:** `8101633952`
+
+**Role:** UI/UX Design, Presentation Design, User Experience & Product Experience
+
+**Responsibilities:**
+
+- Designed and refined the user interface and overall visual experience of KnowHack.
+- Worked on UI/UX concepts to make the platform intuitive, accessible, and easy to navigate.
+- Designed the visual structure and presentation of major product features.
+- Developed and refined the **PowerPoint presentation (PPT)** for project demonstrations and hackathon pitching.
+- Worked on user experience flows and helped define how users move through different parts of the platform.
+- Contributed to the **User Experience roadmap**, identifying opportunities to improve usability and engagement.
+- Focused on information hierarchy, layout, visual consistency, and interaction design.
+- Helped translate complex technical functionality into a clear and understandable user-facing experience.
+- Collaborated with the development team to ensure the implemented interface aligned with the intended design and product vision.
+- Contributed to visual storytelling for the hackathon presentation, demonstrations, and project showcase.
+
+#### Team Member — Deb Sankar Das
+
+**Email:** `debsankar999@gmail.com` · **Contact:** `8777735491`
+
+**Role:** Video Production, Security & Trust Layer
+
+**Responsibilities:**
+
+- Led the project's video editing and visual storytelling activities.
+- Edited and prepared project demonstration videos for presentations and hackathon submissions.
+- Worked on structuring technical demonstrations so that the project's core value could be communicated clearly.
+- Contributed to the design and implementation of the **security layer** of the platform.
+- Focused on security-related considerations across the system and helped identify potential risks and vulnerabilities.
+- Contributed to the development of the **Trust Layer**, supporting reliability, transparency, and user confidence within the platform.
+- Worked on concepts related to secure handling of project information and user interactions.
+- Helped communicate security and trust mechanisms through documentation, visual materials, and demonstrations.
+- Collaborated with the AI and development team to ensure security and trust considerations were integrated into the broader system design.
+
+#### Team Member — Apurba Pramanik
+
+**Email:** `pramanikapurba2005@gmail.com` · **Contact:** `8910817875`
+
+**Role:** AI Workflow, AI Integration & Technical Documentation
+
+**Responsibilities:**
+
+- Designed and coordinated the AI workflow used within KnowHack.
+- Worked on the integration and orchestration of AI-powered functionality.
+- Helped define how AI processes information, generates insights, and supports the platform's core features.
+- Contributed to designing structured AI pipelines and workflows for different project-related use cases.
+- Worked on AI-related logic, experimentation, and integration with the broader application architecture.
+- Helped ensure that AI capabilities were connected effectively with the platform's user experience and backend systems.
+- Contributed to technical documentation covering AI workflows, system functionality, and implementation details.
+- Worked on documenting technical processes so that the project could be understood and maintained more easily.
+- Collaborated with the team to refine AI functionality based on the project's goals and user requirements.
+
+---
+
 ## Table of Contents
 
+- [Team & Project Information](#team--project-information)
 - [Architecture](#architecture)
 - [Repository Layout](#repository-layout)
 - [Features](#features)
